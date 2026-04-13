@@ -2,135 +2,119 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- 1. PAGE CONFIG & DARK THEME CSS ---
-st.set_page_config(page_title="Virtual Lithography Visualizer", layout="wide")
+# --- PAGE SETUP ---
+st.set_page_config(page_title="VLSI Mask Simulator", layout="wide")
 
+# Custom CSS for UI consistency
 st.markdown("""
     <style>
-    /* Main Background */
-    .stApp {
-        background-color: #121212;
-        color: #e0e0e0;
-    }
-    
-    /* Sidebar Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #1e1e1e !important;
-        border-right: 1px solid #333;
-        width: 320px !important;
-    }
-    
-    /* Metric Card Styling */
-    div[data-testid="stMetricValue"] {
-        font-size: 24px !important;
-        color: #ffffff !important;
-        text-align: center;
-    }
-    div[data-testid="stMetricLabel"] {
-        font-size: 12px !important;
-        text-transform: uppercase;
-        color: #aaaaaa !important;
-        text-align: center;
-    }
-    
-    /* Custom Card Container */
-    .metric-card {
-        background-color: #262626;
-        padding: 15px;
-        border-radius: 5px;
-        border: 1px solid #333;
-        text-align: center;
-    }
-
-    /* Button Styling */
-    .stButton>button {
-        width: 100%;
-        background-color: #333333;
-        color: white;
-        border: 1px solid #444;
-        border-radius: 4px;
-    }
-    .stButton>button:hover {
-        background-color: #444444;
-        border-color: #666;
-    }
+    .stApp { background-color: #0e1117; color: #ffffff; }
+    h1 { font-size: 3rem !important; color: #4facfe; }
+    h2 { font-size: 1.8rem !important; color: #00f2fe; }
+    .metric-container { background-color: #1a1c24; padding: 15px; border-radius: 10px; border: 1px solid #30363d; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SIDEBAR PARAMETERS ---
+# # Virtual Lithography Lab: Mask Simulation 🎭
+st.write("Aashna, you can now swap between different mask geometries to see how the light resolves.")
+st.divider()
+
+# --- SIDEBAR: PARAMETERS ---
 with st.sidebar:
-    st.markdown("### 🛠️ SUBSTRATE & RESIST")
-    substrate = st.selectbox("Substrate", ["Silicon", "SOI", "GaAs", "Glass"])
+    st.write("## ⚙️ Process Settings")
+    
+    ### 🏗️ Mask & Resist
+    mask_type = st.selectbox("Mask Pattern", ["Lines/Spaces", "Contact Holes", "Isolated Line", "Dense Array"])
     res_type = st.selectbox("Resist Type", ["Positive", "Negative"])
-    thickness = st.slider("Resist Thickness (nm)", 50, 800, 300)
-    pac = st.slider("PAC Concentration", 0.10, 0.60, 0.30)
+    thickness = st.slider("Resist Thickness (nm)", 100, 800, 400)
     
-    st.markdown("---")
-    st.markdown("### 💡 EXPOSURE")
-    wl = st.selectbox("Wavelength", [365, 248, 193, 13], format_func=lambda x: f"{x} nm")
-    dose = st.slider("Dose (mJ/cm²)", 5, 100, 25)
-    na = st.slider("Numerical Aperture", 0.30, 1.35, 0.85)
-    focus = st.slider("Focus Offset", -200, 200, 0)
+    st.divider()
     
-    st.markdown("---")
-    run_btn = st.button("Run Simulation")
+    ### 💡 Exposure Settings
+    wl = st.selectbox("Wavelength (nm)", [365, 248, 193, 13.5], index=2)
+    na = st.slider("Numerical Aperture (NA)", 0.5, 1.35, 0.85)
+    focus = st.slider("Focus Offset (nm)", -150, 150, 0)
+    
+    st.divider()
+    run_sim = st.button("🚀 Run Simulation")
 
-# --- 3. MAIN CONTENT AREA ---
-st.title("Virtual lithography visualizer with process parameters")
-
-# Tabs for different views (Matches your screenshot)
-tab_cross, tab_top, tab_aerial, tab_profile, tab_dose = st.tabs([
-    "Cross-section", "Top-down", "Aerial Image", "Resist Profile", "Dose Map"
-])
-
-# --- 4. CALCULATIONS ---
-# Physics Constants
-k1 = 0.4
-cd = (k1 * wl) / na
-dof = (0.5 * wl) / (na**2)
-el = (dose / 100) * 10 # Dummy Exposure Latitude calculation
-
-# --- 5. VISUALIZATION LOGIC ---
-if run_btn:
-    with tab_cross:
-        # Drawing the Cross-section
-        fig, ax = plt.subplots(figsize=(10, 3), facecolor='#121212')
-        ax.set_facecolor('#121212')
+# --- SIMULATION ENGINE ---
+if run_sim:
+    # 1. Physics Calculations
+    k1 = 0.4
+    cd = (k1 * wl) / na
+    dof = (0.5 * wl) / (na**2)
+    
+    # 2. Grid Creation (NumPy)
+    grid_size = 200
+    x = np.linspace(-500, 500, grid_size)
+    y = np.linspace(-500, 500, grid_size)
+    X, Y = np.meshgrid(x, y)
+    
+    # 3. Mask Geometry Logic
+    intensity = np.zeros((grid_size, grid_size))
+    
+    if mask_type == "Lines/Spaces":
+        intensity = np.abs(np.sinc(X * na / (wl/2)))**2
+    elif mask_type == "Contact Holes":
+        r = np.sqrt(X**2 + Y**2)
+        intensity = np.abs(2 * np.sinc(r * na / (wl/2)))**2
+    elif mask_type == "Isolated Line":
+        intensity = np.where(np.abs(X) < cd/2, 1, 0)
+        # Apply diffraction blur
+        intensity = np.exp(-(X**2) / (2 * (cd/1.5)**2))
+    elif mask_type == "Dense Array":
+        intensity = (np.cos(2 * np.pi * X / (cd*2)) + 1) / 2
         
-        # Draw Silicon Substrate
-        ax.add_patch(plt.Rectangle((-500, -100), 1000, 100, color='#2c3e50'))
-        ax.text(-480, -50, "Si substrate", color='white', fontsize=8)
+    # Apply Focus Blur (Convolution-like effect)
+    blur = abs(focus) / 50
+    if blur > 0:
+        intensity = intensity * (1 - blur*0.2) # Simplification for visualization
         
-        # Draw Resist Features
-        x_vals = np.linspace(-500, 500, 6)
-        for val in x_vals:
-            color = '#3498db' if res_type == "Positive" else '#e67e22'
-            ax.add_patch(plt.Rectangle((val, 0), cd, thickness/4, color=color))
-            
-        ax.set_xlim(-500, 500)
-        ax.set_ylim(-100, 300)
-        ax.axis('off')
-        st.pyplot(fig)
+    # 4. Visualization
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.write("### 🔝 Top View (Aerial Image)")
+        fig1, ax1 = plt.subplots(facecolor='#0e1117')
+        im = ax1.imshow(intensity, extent=[-500, 500, -500, 500], cmap='inferno')
+        ax1.set_title(f"{mask_type} Pattern", color='white')
+        ax1.axis('off')
+        plt.colorbar(im, ax=ax1, label='Light Intensity')
+        st.pyplot(fig1)
 
-    # Metrics Grid (3x2 layout like screenshot)
-    st.markdown("---")
+    with col2:
+        st.write("### 📐 Side View (Cross-section)")
+        fig2, ax2 = plt.subplots(facecolor='#0e1117')
+        ax2.set_facecolor('#1a1c24')
+        
+        # Cross section taken at center (Y=0)
+        center_line = intensity[grid_size//2, :]
+        threshold = 0.5 if res_type == "Positive" else 0.3
+        
+        # Draw Substrate
+        ax2.fill_between(x, -50, 0, color='#2c3e50', label='Silicon')
+        
+        # Draw Resist
+        resist_profile = np.where(center_line < threshold, thickness, 0) if res_type == "Positive" \
+                         else np.where(center_line > threshold, thickness, 0)
+        
+        ax2.fill_between(x, 0, resist_profile, color='orange', alpha=0.8, step="mid", label='Photoresist')
+        
+        ax2.set_ylim(-60, 1000)
+        ax2.set_title(f"Z-Axis Profile", color='white')
+        ax2.set_ylabel("Thickness (nm)", color='white')
+        ax2.legend()
+        st.pyplot(fig2)
+
+    # --- METRICS ---
+    st.divider()
     m1, m2, m3 = st.columns(3)
-    m4, m5, m6 = st.columns(3)
-
-    with m1: st.metric("Critical Dimension", f"{cd:.0f} nm")
-    with m2: st.metric("Depth of Focus", f"{dof:.0f} nm")
-    with m3: st.metric("Exposure Latitude", f"{el:.0f} %")
-    with m4: st.metric("Resist Contrast", "3.4 γ")
-    with m5: st.metric("LER Estimate", "6.4 nm 3σ")
-    with m6:
-        status = "Pass" if abs(focus) < dof else "Fail"
-        st.metric("Process Status", status)
-
-    # Success Box at bottom
-    if status == "Pass":
-        st.success("Process window looks healthy. All parameters within specification.")
-    else:
-        st.error("Process window failed. Adjust Focus or Numerical Aperture.")
+    with m1: st.metric("Resolution (CD)", f"{cd:.1f} nm")
+    with m2: st.metric("Process Window (DOF)", f"{dof:.1f} nm")
+    with m3:
+        status = "✅ Stable" if abs(focus) < dof else "❌ Out of Focus"
+        st.write(f"**Status:** {status}")
 
 else:
-    st.info("Click 'Run Simulation' in the sidebar to visualize results.")
+    st.info("👈 Choose a mask type and click 'Run Simulation' to generate the views.")
