@@ -2,114 +2,99 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- 1. PAGE CONFIG ---
-st.set_page_config(page_title="VLSI Full Process Lab", layout="wide")
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="3D VLSI Litho Lab", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; color: #ffffff; }
-    h1 { font-size: 3rem !important; color: #4facfe; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { 
-        background-color: #1a1c24; border: 1px solid #30363d; border-radius: 8px; color: #888; padding: 10px 15px;
-    }
-    .stTabs [aria-selected="true"] { background-color: #0056b3 !important; color: white !important; }
+    [data-testid="stSidebar"] { background-color: #1a1c24 !important; }
+    h1 { color: #4facfe; font-size: 2.5rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# # 🔬 9-Step Process Visualizer
-st.write("Aashna, use the tabs below to see the **Top View** and **Side View** for every step of the fabrication cycle.")
+# # 🧊 3D Lithography Visualizer
+st.write(f"Hi Aashna! This simulation renders a **3D volumetric model** of the wafer.")
 st.divider()
 
-# --- 2. SIDEBAR PARAMETERS ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.write("### ⚙️ SETTINGS")
+    st.write("### ⚙️ Fabrication Settings")
+    step = st.select_slider("Current Process Step", 
+                            options=["1. Deposition", "2. Coating", "3. Exposure", "4. Development", "5. Etching"])
     res_type = st.selectbox("Resist Type", ["Positive", "Negative"])
-    wl = st.selectbox("Wavelength", [365, 248, 193, 13.5], index=2)
-    na = st.slider("NA", 0.3, 1.35, 0.85)
-    st.divider()
-    run_sim = st.button("🚀 RUN SIMULATION")
-
-# --- 3. SIMULATION LOGIC ---
-if run_sim:
-    # Calculations
-    k1 = 0.4
-    cd = (k1 * wl) / na
-    grid_size = 200
-    x = np.linspace(-500, 500, grid_size)
-    y = np.linspace(-500, 500, grid_size)
-    X, Y = np.meshgrid(x, y)
+    na = st.slider("Numerical Aperture (NA)", 0.3, 0.9, 0.6)
     
-    # Mathematical model for Aerial Image
-    intensity = np.abs(np.sinc(X * na / (wl/2)))**2
-    threshold = 0.5
-    res_profile = np.where(intensity[grid_size//2, :] < threshold, 40, 0) if res_type == "Positive" else np.where(intensity[grid_size//2, :] > threshold, 40, 0)
+    st.divider()
+    st.info("💡 **Tip:** Use the 'Exposure' step to see the light latent image inside the resist block.")
 
-    # Helper function for dual-view plotting
-    def plot_dual_view(step_name, top_data, side_logic_fn):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write(f"#### {step_name}: Top View")
-            fig_t, ax_t = plt.subplots(facecolor='#0e1117')
-            ax_t.imshow(top_data, extent=[-500, 500, -500, 500], cmap='magma')
-            ax_t.axis('off')
-            st.pyplot(fig_t)
-        with col2:
-            st.write(f"#### {step_name}: Side View")
-            fig_s, ax_s = plt.subplots(facecolor='#0e1117')
-            ax_s.set_facecolor('#1a1c24')
-            side_logic_fn(ax_s)
-            ax_s.set_xlim(-500, 500)
-            ax_s.set_ylim(-60, 150)
-            ax_s.axis('off')
-            st.pyplot(fig_s)
+# --- 3D VOXEL ENGINE ---
+# Define a 15x15x10 grid for the 3D space
+x_dim, y_dim, z_dim = 20, 20, 12
+voxels = np.zeros((x_dim, y_dim, z_dim), dtype=bool)
+colors = np.empty(voxels.shape, dtype=object)
 
-    # --- 4. TABS FOR EACH STEP ---
-    t1, t2, t3, t4, t5 = st.tabs(["1-2. Deposit", "3-5. Coat/Bake", "6. Exposure", "7. Develop", "8-9. Etch/Strip"])
+# Material Color Palette
+COLOR_SUBSTRATE = '#8B0000' # Deep Red
+COLOR_TARGET = '#008B8B'    # Teal
+COLOR_RESIST = '#FFD700'    # Gold/Yellow
+COLOR_EXPOSED = '#FF4500'   # Orange-Red (Latent Image)
 
-    with t1:
-        st.info("Step 1-2: Cleaning and Deposition of Target Material.")
-        def side_1(ax):
-            ax.add_patch(plt.Rectangle((-500, -50), 1000, 50, color='#8B0000')) # Substrate
-            ax.add_patch(plt.Rectangle((-500, 0), 1000, 20, color='#008B8B')) # Target
-        plot_dual_view("Deposition", np.ones((grid_size, grid_size))*0.5, side_1)
+# --- STEP-BY-STEP LOGIC ---
 
-    with t2:
-        st.info("Step 3-5: Wafer Priming, Resist Coating, and Soft-Baking.")
-        def side_2(ax):
-            ax.add_patch(plt.Rectangle((-500, -50), 1000, 50, color='#8B0000'))
-            ax.add_patch(plt.Rectangle((-500, 0), 1000, 20, color='#008B8B'))
-            ax.add_patch(plt.Rectangle((-500, 20), 1000, 40, color='#CCCC00', alpha=0.8)) # Resist
-        plot_dual_view("Coating", np.ones((grid_size, grid_size))*0.8, side_2)
+# 1. Base Substrate (Always there)
+voxels[:, :, 0:3] = True
+colors[:, :, 0:3] = COLOR_SUBSTRATE
 
-    with t3:
-        st.warning("Step 6: Exposure through mask. Red arrows represent UV light.")
-        def side_3(ax):
-            ax.add_patch(plt.Rectangle((-500, -50), 1000, 50, color='#8B0000'))
-            ax.add_patch(plt.Rectangle((-500, 0), 1000, 20, color='#008B8B'))
-            ax.add_patch(plt.Rectangle((-500, 20), 1000, 40, color='#CCCC00', alpha=0.4))
-            for i in range(-400, 500, 200):
-                ax.annotate('', xy=(i, 20), xytext=(i, 100), arrowprops=dict(arrowstyle='->', color='red'))
-        plot_dual_view("Exposure", intensity, side_3)
+# 2. Target Layer (SiO2/Metal)
+if step != "1. Deposition":
+    # If we are at the Etching stage, the target material is only kept in the center
+    if step == "5. Etching":
+        voxels[8:12, :, 3:5] = True
+        colors[8:12, :, 3:5] = COLOR_TARGET
+    else:
+        voxels[:, :, 3:5] = True
+        colors[:, :, 3:5] = COLOR_TARGET
 
-    with t4:
-        st.success("Step 7: Development removes soluble resist.")
-        def side_4(ax):
-            ax.add_patch(plt.Rectangle((-500, -50), 1000, 50, color='#8B0000'))
-            ax.add_patch(plt.Rectangle((-500, 0), 1000, 20, color='#008B8B'))
-            ax.fill_between(x, 20, 20 + res_profile, color='#808080', step="mid") # Developed Resist
-        # Top view shows the pattern formed in the resist
-        top_res = np.where(intensity < threshold, 1, 0) if res_type == "Positive" else np.where(intensity > threshold, 1, 0)
-        plot_dual_view("Development", top_res, side_4)
+# 3. Resist Layer
+if step in ["2. Coating", "3. Exposure", "4. Development"]:
+    if step == "4. Development":
+        # Remove resist based on "Positive" or "Negative" logic
+        if res_type == "Positive":
+            voxels[0:8, :, 5:9] = True
+            voxels[12:20, :, 5:9] = True
+        else:
+            voxels[8:12, :, 5:9] = True
+        colors[:, :, 5:9] = COLOR_RESIST
+    else:
+        voxels[:, :, 5:9] = True
+        colors[:, :, 5:9] = COLOR_RESIST
+        
+    # Show Latent Image during Exposure
+    if step == "3. Exposure":
+        colors[8:12, :, 5:9] = COLOR_EXPOSED
 
-    with t5:
-        st.error("Step 8-9: Etching the target material and Stripping the resist.")
-        def side_5(ax):
-            ax.add_patch(plt.Rectangle((-500, -50), 1000, 50, color='#8B0000'))
-            # Etched profile (Target material remains only where resist was)
-            etch_p = np.where(res_profile > 0, 20, 0)
-            ax.fill_between(x, 0, etch_p, color='#008B8B', step="mid")
-        plot_dual_view("Final Etch", top_res, side_5)
+# --- RENDERER ---
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+ax.set_facecolor('#0e1117')
 
-else:
-    st.info("Click 'Run Simulation' to visualize the dual-view process flow.")
+# Plotting the 3D Cubes
+ax.voxels(voxels, facecolors=colors, edgecolor='k', linewidth=0.1)
+
+# Styling the 3D Box
+ax.set_axis_off()
+ax.view_init(elev=25, azim=45) # Set the 3D angle like the reference image
+
+st.pyplot(fig)
+
+# --- EXPLANATION SECTION ---
+st.divider()
+st.write(f"### 🔍 Analysis of {step}")
+
+if step == "1. Deposition":
+    st.write("We start with the **Substrate** (Red) and deposit the **Target Layer** (Teal).")
+elif step == "3. Exposure":
+    st.write("The **Latent Image** (Orange) is formed inside the resist block where UV light hit the molecules.")
+elif step == "5. Etching":
+    st.write("The resist is gone (stripped), and the **Target Layer** is now permanently patterned.")
