@@ -2,107 +2,102 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- 1. PAGE CONFIG & UI STYLING ---
-st.set_page_config(page_title="VLSI 3D Lab", layout="wide")
+# --- 1. PAGE CONFIG ---
+st.set_page_config(page_title="Compact 3D Lab", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; color: #ffffff; }
-    h1 { font-size: 2.5rem !important; color: #4facfe; }
     .stButton>button { 
-        width: 100%; border-radius: 20px; border: 1px solid #4facfe;
-        background-color: transparent; color: white; transition: 0.3s;
+        width: 100%; border-radius: 15px; border: 1px solid #4facfe;
+        background-color: transparent; color: white; font-size: 12px;
     }
     .stButton>button:hover { background-color: #4facfe; color: black; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SESSION STATE FOR NAVIGATION ---
+# --- 2. NAVIGATION & STATE ---
 if 'step' not in st.session_state:
     st.session_state.step = "Deposition"
 
-# --- 3. TOP NAVIGATION BUTTONS ---
-st.write("# 3.0 Interactive Lithography Lab")
+st.write("## 🔬 Micro-Scale 3D Lithography Lab")
+
+# Small navigation row
 cols = st.columns(5)
-with cols[0]:
-    if st.button("1. Deposition"): st.session_state.step = "Deposition"
-with cols[1]:
-    if st.button("2. Coating"): st.session_state.step = "Coating"
-with cols[2]:
-    if st.button("3. Exposure"): st.session_state.step = "Exposure"
-with cols[3]:
-    if st.button("4. Development"): st.session_state.step = "Development"
-with cols[4]:
-    if st.button("5. Etching"): st.session_state.step = "Etching"
+steps = ["Deposition", "Coating", "Exposure", "Development", "Etching"]
+for i, s in enumerate(steps):
+    if cols[i].button(f"{i+1}. {s}"):
+        st.session_state.step = s
 
 st.divider()
 
-# --- 4. 3D VOXEL ENGINE ---
-x_dim, y_dim, z_dim = 20, 20, 12
-voxels = np.zeros((x_dim, y_dim, z_dim), dtype=bool)
-colors = np.empty(voxels.shape, dtype=object)
+# --- 3. COMPACT 3D LAYOUT ---
+# Using columns to force the 3D plot into a smaller space
+view_col, info_col = st.columns([1, 1])
 
-# Color Palette
-COLOR_SUB = '#8B0000'   # Red Substrate
-COLOR_TGT = '#008B8B'   # Teal Target
-COLOR_RES = '#FFD700'   # Yellow Resist
-COLOR_EXP = '#FF4500'   # Orange Latent Image
+with view_col:
+    # Build Voxel Grid
+    x, y, z = 20, 20, 12
+    voxels = np.zeros((x, y, z), dtype=bool)
+    colors = np.empty(voxels.shape, dtype=object)
+    
+    # Colors
+    C_SUB, C_TGT, C_RES, C_EXP = '#8B0000', '#008B8B', '#FFD700', '#FF4500'
 
-# Layer Logic
-# Always show Substrate
-voxels[:, :, 0:3] = True
-colors[:, :, 0:3] = COLOR_SUB
+    # Always Substrate
+    voxels[:, :, 0:3] = True
+    colors[:, :, 0:3] = C_SUB
 
-# Step-specific logic
-step = st.session_state.step
+    curr = st.session_state.step
+    if curr != "Deposition":
+        # Target Layer
+        if curr == "Etching":
+            voxels[8:12, 4:16, 3:5] = True
+            voxels[4:16, 8:12, 3:5] = True
+            colors[8:12, 4:16, 3:5] = C_TGT
+            colors[4:16, 8:12, 3:5] = C_TGT
+        else:
+            voxels[:, :, 3:5] = True
+            colors[:, :, 3:5] = C_TGT
 
-if step == "Deposition":
-    voxels[:, :, 3:5] = True
-    colors[:, :, 3:5] = COLOR_TGT
-    msg = "Step 1: Silicon Substrate with a fresh Target Layer (SiO2) deposited on top."
+    if curr in ["Coating", "Exposure", "Development"]:
+        if curr == "Development":
+            voxels[8:12, 4:16, 5:9] = True
+            voxels[4:16, 8:12, 5:9] = True
+            colors[8:12, 4:16, 5:9] = C_RES
+            colors[4:16, 8:12, 5:9] = C_RES
+        else:
+            voxels[:, :, 5:9] = True
+            colors[:, :, 5:9] = C_RES
+            if curr == "Exposure":
+                colors[8:12, 4:16, 5:9] = C_EXP
+                colors[4:16, 8:12, 5:9] = C_EXP
 
-elif step == "Coating":
-    voxels[:, :, 3:5] = True
-    colors[:, :, 3:5] = COLOR_TGT
-    voxels[:, :, 5:9] = True
-    colors[:, :, 5:9] = COLOR_RES
-    msg = "Step 2: Photoresist is spin-coated and soft-baked into a uniform block."
+    # Render Smaller Figure
+    fig = plt.figure(figsize=(5, 4)) # Reduced from (10, 7) to make it small
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_facecolor('#0e1117')
+    ax.voxels(voxels, facecolors=colors, edgecolor='k', linewidth=0.1)
+    ax.view_init(elev=30, azim=45)
+    ax.set_axis_off()
+    st.pyplot(fig)
 
-elif step == "Exposure":
-    voxels[:, :, 3:5] = True
-    colors[:, :, 3:5] = COLOR_TGT
-    voxels[:, :, 5:9] = True
-    colors[:, :, 5:9] = COLOR_RES
-    # Show latent image "cross" in orange
-    colors[8:12, 4:16, 5:9] = COLOR_EXP
-    colors[4:16, 8:12, 5:9] = COLOR_EXP
-    msg = "Step 3: UV light creates a latent chemical image (orange) inside the resist."
-
-elif step == "Development":
-    voxels[:, :, 3:5] = True
-    colors[:, :, 3:5] = COLOR_TGT
-    # Keep only the cross pattern (Positive Resist logic)
-    voxels[8:12, 4:16, 5:9] = True
-    voxels[4:16, 8:12, 5:9] = True
-    colors[8:12, 4:16, 5:9] = COLOR_RES
-    colors[4:16, 8:12, 5:9] = COLOR_RES
-    msg = "Step 4: Developer washes away the exposed resist, leaving a 3D relief pattern."
-
-elif step == "Etching":
-    # Target layer only exists under where the resist was
-    voxels[8:12, 4:16, 3:5] = True
-    voxels[4:16, 8:12, 3:5] = True
-    colors[8:12, 4:16, 3:5] = COLOR_TGT
-    colors[4:16, 8:12, 3:5] = COLOR_TGT
-    msg = "Step 5: The pattern is etched into the target layer and the resist is stripped."
-
-# --- 5. RENDERING ---
-fig = plt.figure(figsize=(10, 7))
-ax = fig.add_subplot(111, projection='3d')
-ax.set_facecolor('#0e1117')
-ax.voxels(voxels, facecolors=colors, edgecolor='k', linewidth=0.2)
-ax.view_init(elev=30, azim=45)
-ax.set_axis_off()
-
-st.pyplot(fig)
-st.info(msg)
+with info_col:
+    st.write(f"### Current Phase: **{curr}**")
+    
+    # Contextual info based on your process diagram
+    if curr == "Deposition":
+        st.write("• **Action**: Wafer Cleaning & Layer Deposition")
+        st.write("• **Material**: Target material (Teal) is added to the substrate (Red)")
+    elif curr == "Coating":
+        st.write("• **Action**: Photo-resist Coating & Soft-Baking")
+        st.write("• **Result**: A uniform light-sensitive layer (Yellow) is prepared")
+    elif curr == "Exposure":
+        st.write("• **Action**: UV Exposure through Mask")
+        st.write("• **Visual**: The orange 'latent image' shows where the resist chemistry changed")
+    elif curr == "Development":
+        st.write("• **Action**: Developing the pattern")
+        st.write("• **Result**: Soluble resist is washed away, leaving the physical 3D structure")
+    elif curr == "Etching":
+        st.write("• **Action**: Pattern Etching & Strip")
+        st.write("• **Final**: The target material is now shaped, and the resist is removed")
