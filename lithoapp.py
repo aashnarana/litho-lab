@@ -2,135 +2,127 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- 1. PAGE CONFIG & THEME ---
-st.set_page_config(page_title="Virtual Litho Lab", layout="wide")
+# --- 1. SETTINGS & NEON THEME ---
+st.set_page_config(page_title="VLSI Nano-Lab", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #e0e0e0; }
-    /* Top Bar Styling */
-    .top-bar { background: #161b22; padding: 15px; border-radius: 10px; border-bottom: 2px solid #00f2ff; margin-bottom: 20px; }
-    /* Panel Styling */
-    .lab-panel { background: #1c2128; padding: 20px; border-radius: 12px; border: 1px solid #30363d; height: 85vh; overflow-y: auto; }
-    h1, h2, h3 { color: #00f2ff; font-family: 'Courier New', monospace; }
-    .metric-box { background: #0d1117; padding: 10px; border-radius: 8px; border-left: 4px solid #7000ff; margin-bottom: 10px; }
+    .step-container { display: flex; justify-content: space-between; margin-bottom: 20px; gap: 5px; }
+    .stButton>button { 
+        border-radius: 5px; height: 3em; font-weight: bold; font-size: 12px;
+        transition: 0.3s; border: 1px solid #30363d;
+    }
+    /* Active Step Glow */
+    .active-btn { border: 2px solid #00f2ff !important; box-shadow: 0 0 10px #00f2ff; }
+    .panel { background: #161b22; padding: 20px; border-radius: 10px; border: 1px solid #30363d; }
+    h3 { color: #00f2ff; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. TOP BAR (Experiment Control) ---
-st.markdown('<div class="top-bar"><h1>🧪 Photolithography Process Simulation</h1></div>', unsafe_allow_html=True)
+# --- 2. SESSION STATE (The Brain) ---
+if 'current_step' not in st.session_state:
+    st.session_state.current_step = "Wafer"
 
-tcol1, tcol2, tcol3 = st.columns([2, 3, 2])
-with tcol1:
-    run = st.button("▶ RUN SIMULATION")
-with tcol2:
-    st.write("**Step Indicator:**")
-    st.caption("Coating → Pre-Bake → Exposure → Development")
-with tcol3:
-    preset = st.selectbox("📁 Load Preset", ["Ideal", "Overexposed", "Underexposed"])
+# --- 3. TOP BAR: STEP NAVIGATION BUTTONS ---
+st.write("### 🔷 1. Process Step Control")
+step_cols = st.columns(9)
+steps = ["Wafer", "Coat", "Soft Bake", "Align", "Exposure", "PEB", "Develop", "Etch", "Strip"]
+
+for i, s in enumerate(steps):
+    if step_cols[i].button(s, key=f"btn_{s}"):
+        st.session_state.current_step = s
 
 st.divider()
 
-# --- 3. MAIN LAB INTERFACE (SPLIT-SCREEN) ---
-left_col, center_col, right_col = st.columns([1, 2, 1])
+# --- 4. MAIN INTERFACE LAYOUT ---
+left_input, center_viz, right_ctrl = st.columns([1, 2, 1])
 
-# 🔷 LEFT PANEL: INPUTS
-with left_col:
-    st.markdown('<div class="lab-panel">', unsafe_allow_html=True)
-    st.subheader("📥 Process Inputs")
+# 🔷 LEFT PANEL: PARAMETERS
+with left_input:
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.subheader("📥 Inputs")
     
-    with st.expander("📌 A. Photoresist Parameters", expanded=True):
-        res_type = st.radio("Resist Type", ["Positive", "Negative"])
-        thick = st.slider("Thickness (µm)", 0.5, 5.0, 1.2)
-        spin = st.slider("Spin Speed (RPM)", 1000, 6000, 3000)
+    pr_type = st.radio("Photoresist Type", ["Positive PR", "Negative PR"], horizontal=True)
+    mask_shape = st.selectbox("Mask Pattern", ["Lines", "Dots", "Contact Holes", "Grid"])
     
-    with st.expander("📌 B. Pre-Exposure (Soft Bake)"):
-        sb_temp = st.slider("Temperature (°C)", 60, 120, 90)
-        sb_time = st.slider("Time (sec)", 30, 120, 60)
-        
-    with st.expander("📌 C. Exposure Settings"):
-        wl = st.number_input("UV Wavelength (nm)", value=193)
-        dose = st.slider("Dose (mJ/cm²)", 10, 200, 50)
-        mask = st.selectbox("Mask Pattern", ["Lines", "Dots", "Custom"])
-
-    with st.expander("📌 D. Development"):
-        dev_time = st.slider("Dev Time (sec)", 10, 90, 45)
+    st.markdown("---")
+    dose = st.slider("Exposure Dose (mJ/cm²)", 10, 200, 50)
+    thick = st.slider("Thickness (µm)", 0.5, 3.0, 1.2)
+    
+    apply = st.button("🔥 APPLY CHANGES", type="primary")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 🔷 CENTER PANEL: VISUALIZER
-with center_col:
-    st.subheader("🧱 Multi-Layer Visualization")
-    view_mode = st.tabs(["3D Volumetric", "Cross-Sectional", "Top-Down"])
-    
-    # 3D Rendering Logic
-    x, y, z = 20, 20, 10
+# 🔷 CENTER PANEL: 3D VISUALIZER
+with center_viz:
+    # 3D Voxel Setup
+    x, y, z = 20, 20, 12
     voxels = np.zeros((x, y, z), dtype=bool)
     colors = np.empty(voxels.shape, dtype=object)
     
-    # Material Colors (Neon Theme)
-    C_SUB = '#1a1a1a' # Dark Wafer
-    C_TGT = '#00f2ff' # Cyan Target
-    C_RES = '#7000ff' # Purple Resist
-    
-    # Build the stack
+    # Material Colors
+    C_SUB = '#2c3e50'   # Dark Gray Substrate
+    C_TGT = '#00f2ff'   # Cyan Target Layer
+    C_RES = '#7000ff'   # Purple Photoresist
+    C_EXP = '#ff00ff'   # Neon Pink (Exposed Region)
+
+    curr = st.session_state.step = st.session_state.current_step
+
+    # 🧱 Layer Construction Logic
+    # 1. Always Substrate
     voxels[:, :, 0:2] = True; colors[:, :, 0:2] = C_SUB
-    voxels[:, :, 2:4] = True; colors[:, :, 2:4] = C_TGT
     
-    # Simulation Logic for development
-    if run:
-        # Pattern logic based on "Dose" and "Resist Type"
-        is_pos = (res_type == "Positive")
-        if dose > 150: # Overexposed
-            p_width = 8 if is_pos else 2
-        elif dose < 30: # Underexposed
-            p_width = 2 if is_pos else 8
+    # 2. Target Layer (Silicon Dioxide)
+    if curr != "Wafer":
+        if curr in ["Etch", "Strip"]:
+            voxels[8:12, 4:16, 2:4] = True; colors[8:12, 4:16, 2:4] = C_TGT
+            voxels[4:16, 8:12, 2:4] = True; colors[4:16, 8:12, 2:4] = C_TGT
         else:
-            p_width = 4
-            
-        # Draw Pattern
-        if is_pos:
-            voxels[10-p_width:10+p_width, :, 4:8] = False # Exposed area removed
-            voxels[0:10-p_width, :, 4:8] = True; colors[0:10-p_width, :, 4:8] = C_RES
-            voxels[10+p_width:20, :, 4:8] = True; colors[10+p_width:20, :, 4:8] = C_RES
-        else:
-            voxels[10-p_width:10+p_width, :, 4:8] = True; colors[10-p_width:10+p_width, :, 4:8] = C_RES
-            
-    with view_mode[0]:
-        fig = plt.figure(figsize=(8, 6), facecolor='#0b0e14')
-        ax = fig.add_subplot(111, projection='3d')
-        ax.set_facecolor('#0b0e14')
-        ax.voxels(voxels, facecolors=colors, edgecolor='#000000', linewidth=0.1)
-        ax.view_init(elev=20, azim=45)
-        ax.axis('off')
-        st.pyplot(fig)
+            voxels[:, :, 2:4] = True; colors[:, :, 2:4] = C_TGT
 
-# 🔷 RIGHT PANEL: OUTPUTS
-with right_col:
-    st.markdown('<div class="lab-panel">', unsafe_allow_html=True)
-    st.subheader("📊 Output Metrics")
+    # 3. Photoresist Layer
+    if curr in ["Coat", "Soft Bake", "Align", "Exposure", "PEB", "Develop"]:
+        if curr == "Develop":
+            # POSITIVE: Exposed is removed. NEGATIVE: Unexposed is removed.
+            if pr_type == "Positive PR":
+                voxels[0:8, :, 4:9] = True; voxels[12:20, :, 4:9] = True
+                colors[:, :, 4:9] = C_RES
+            else:
+                voxels[8:12, 4:16, 4:9] = True; voxels[4:16, 8:12, 4:16] = True
+                colors[:, :, 4:9] = C_RES
+        else:
+            voxels[:, :, 4:9] = True; colors[:, :, 4:9] = C_RES
+            # Highlight Exposure Pattern
+            if curr in ["Exposure", "PEB"]:
+                colors[8:12, 4:16, 4:9] = C_EXP
+                colors[4:16, 8:12, 4:9] = C_EXP
+
+    # Render 3D
+    fig = plt.figure(figsize=(7, 6), facecolor='#0b0e14')
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_facecolor('#0b0e14')
+    ax.voxels(voxels, facecolors=colors, edgecolor='k', linewidth=0.1)
+    ax.view_init(elev=25, azim=45)
+    ax.axis('off')
+    st.pyplot(fig)
     
-    cd_val = (wl * 0.4) / 0.85 # Simplified CD formula
+    st.write(f"### Current View: **{curr}**")
+
+# 🔷 RIGHT PANEL: SMART PREVIEW & OUTPUTS
+with right_ctrl:
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.subheader("🔍 Smart Preview")
     
-    st.markdown(f'<div class="metric-box"><small>CD (Critical Dimension)</small><h3>{cd_val:.1f} nm</h3></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-box"><small>Resolution</small><h3>{cd_val*1.2:.1f} nm</h3></div>', unsafe_allow_html=True)
+    if st.button("🖼️ Pre-Exposure"): st.session_state.current_step = "Coat"
+    if st.button("🖼️ Post-Exposure"): st.session_state.current_step = "Exposure"
+    if st.button("🖼️ After Development"): st.session_state.current_step = "Develop"
+    if st.button("🖼️ Final Output"): st.session_state.current_step = "Strip"
     
-    st.subheader("⚠️ Warnings")
-    if dose > 150:
-        st.error("Overexposure detected: Pattern widening.")
-    elif dose < 30:
-        st.warning("Underexposure: Incomplete development.")
-    else:
-        st.success("Process within ideal window.")
-        
-    st.button("🧾 Export Lab Report")
+    st.markdown("---")
+    st.subheader("📊 Metrics")
+    st.metric("CD (Line Width)", f"{40 + (dose/10):.1f} nm")
+    st.metric("Uniformity", "98.2 %")
+    
+    if dose > 160:
+        st.error("⚠️ Overexposure Warning")
     st.markdown('</div>', unsafe_allow_html=True)
-
-# --- 4. BOTTOM PANEL (Theory) ---
-st.divider()
-bcol1, bcol2 = st.columns([1, 1])
-with bcol1:
-    st.subheader("📈 Exposure Profile")
-    st.line_chart(np.sin(np.linspace(0, 10, 100))**2)
-with bcol2:
-    st.subheader("📘 Step Explanation")
-    st.info("**Soft Bake:** Removes solvent and improves adhesion. Too high temperature causes resist hardening (dark decay).")
